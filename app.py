@@ -166,17 +166,17 @@ if "messages" not in st.session_state:
 ¿En qué puedo ayudarte hoy?"""
     }]
 
-if "docs_loaded" not in st.session_state:
-    st.session_state.docs_loaded = False
-openai_api_key = ""
-# Cargar documentos por defecto al inicio
-if not st.session_state.docs_loaded:
-    # Solo cargar si hay API key válida
-    if openai_api_key and "sk-" in openai_api_key:
-        with st.spinner("🔄 Cargando base de conocimientos médicos..."):
-            st.session_state.openai_api_key = openai_api_key  # Guardar en session state
-            load_default_docs()
-            st.session_state.docs_loaded = True
+# if "docs_loaded" not in st.session_state:
+#     st.session_state.docs_loaded = False
+# openai_api_key = ""
+# # Cargar documentos por defecto al inicio
+# if not st.session_state.docs_loaded:
+#     # Solo cargar si hay API key válida
+#     if openai_api_key and "sk-" in openai_api_key:
+#         with st.spinner("🔄 Cargando base de conocimientos médicos..."):
+#             st.session_state.openai_api_key = openai_api_key  # Guardar en session state
+#             load_default_docs()
+#             st.session_state.docs_loaded = True
 
 # --- Sidebar ---
 with st.sidebar:
@@ -246,8 +246,17 @@ if missing_openai:
         </div>
     """, unsafe_allow_html=True)
     st.stop()
-else:
-    # Configuración del modelo en sidebar
+else:  # <-- AQUÍ VA EL ELSE
+    # Inicializar docs solo si hay API key válida
+    st.session_state.openai_api_key = openai_api_key
+    
+    if "docs_loaded" not in st.session_state:
+        st.session_state.docs_loaded = False
+    
+    if not st.session_state.docs_loaded:
+        with st.spinner("🔄 Cargando base de conocimientos médicos..."):
+            load_default_docs()
+            st.session_state.docs_loaded = True
     with st.sidebar:
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown("### 🤖 Configuración del Modelo")
