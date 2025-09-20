@@ -8,9 +8,13 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage
 
 from utils import stream_llm_response, load_doc_to_db, load_default_docs, stream_llm_rag_response
-__import__('pysqlite3')
+# __import__('pysqlite3')
 import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+__import__('pysqlite3')
+import pysqlite3
+sys.modules['sqlite3'] = sys.modules["pysqlite3"]
+
 dotenv.load_dotenv()
 
 MODELS = [
