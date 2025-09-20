@@ -139,6 +139,11 @@ def stream_llm_response(llm_stream, messages):
 
 def load_default_docs():
     """Carga automáticamente todos los documentos de la carpeta docs/"""
+    # Verificar que existe API key antes de procesar
+    api_key = st.session_state.get('openai_api_key') or os.getenv("OPENAI_API_KEY")
+    if not api_key or "sk-" not in api_key:
+        return
+    
     docs_folder = "docs"
     
     if not os.path.exists(docs_folder):
