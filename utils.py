@@ -303,14 +303,11 @@ def _split_and_load_docs(docs):
 
 def _get_context_retriever_chain(vector_db, llm):
     """Crea la cadena de recuperación de contexto"""
-    if vector_db is None:
-        raise ValueError("Vector database not initialized")
-    
     retriever = vector_db.as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={
-            "k": 8,
-            "score_threshold": 0.25
+            "k": 8,              # Número de documentos a recuperar
+            "score_threshold": 0.25  # Umbral de similitud
         }
     )
     
@@ -467,7 +464,8 @@ def get_conversational_rag_chain(vector_db, llm):
 
 def stream_llm_rag_response(llm_stream, messages):
     """Stream respuestas RAG del LLM usando documentos médicos"""
-    if "vector_db" not in st.session_state or st.session_state.vector_db is None:
+    if "vector_db" not in st.session_state:
+        # Si no hay base vectorial, usar respuesta estándar
         return stream_llm_response(llm_stream, messages)
     
     try:
