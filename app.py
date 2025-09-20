@@ -11,6 +11,7 @@ from utils import stream_llm_response, load_doc_to_db, load_default_docs, stream
 
 dotenv.load_dotenv()
 
+
 MODELS = [
     "gpt-5",
     "gpt-5-mini",
@@ -188,7 +189,11 @@ with st.sidebar:
             type="password",
             value=default_openai_api_key,
             help="Puedes obtener tu API key en https://platform.openai.com/account/api-keys",
+            key="openai_api_key_input"
         )
+        # Guardar en session_state para que esté disponible en utils.py
+        if openai_api_key:
+            st.session_state.openai_api_key = openai_api_key
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Información sobre documentos cargados
@@ -253,7 +258,7 @@ else:
             "Selecciona el modelo de OpenAI",
             MODELS,
             index=5,
-            help="GPT-4o es el modelo más avanzado y recomendado para consultas médicas complejas"
+            help="GPT-5 es el modelo más avanzado y recomendado para consultas médicas complejas"
         )
         
         temperature = st.slider(

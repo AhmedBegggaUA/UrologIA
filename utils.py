@@ -23,11 +23,9 @@ dotenv.load_dotenv()
 os.environ["USER_AGENT"] = "UrologIA_Agent"
 DB_DOCS_LIMIT = 50
 
-# Función para stream de respuestas del LLM
 def stream_llm_response(llm_stream, messages):
     """Stream respuestas estándar del LLM con prompt especializado"""
     
-    # Sistema prompt altamente especializado en urología
     system_prompt = """
     Eres UrologIA, un asistente de inteligencia artificial altamente especializado en urología y específicamente en cáncer de próstata. Tu expertise abarca todos los aspectos de esta especialidad médica.
 
@@ -122,7 +120,6 @@ def stream_llm_response(llm_stream, messages):
     Recuerda: SOLO respondes sobre urología. Cualquier otro tema debe ser redirigido cortésmente.
     """
 
-    # Crear mensajes con el sistema prompt
     full_messages = [{"role": "system", "content": system_prompt}] + [
         {"role": m.type, "content": m.content} for m in messages
     ]
@@ -135,57 +132,72 @@ def stream_llm_response(llm_stream, messages):
     st.session_state.messages.append({"role": "assistant", "content": response_message})
 
 
-# --- FUNCIONES DE CARGA DE DOCUMENTOS ---
-
 def load_default_docs():
     """Carga automáticamente todos los documentos de la carpeta docs/"""
     docs_folder = "docs"
     
-    if not os.path.exists(docs_folder):
-        os.makedirs(docs_folder, exist_ok=True)
-        st.warning(f"📁 Carpeta '{docs_folder}' creada. Coloca aquí tus documentos médicos de referencia.")
-        return
-    
-    # Buscar todos los archivos soportados en la carpeta docs
-    supported_extensions = ['*.pdf', '*.docx', '*.txt', '*.md']
-    docs_to_load = []
-    
-    for extension in supported_extensions:
-        docs_to_load.extend(glob.glob(os.path.join(docs_folder, extension)))
-    
-    if not docs_to_load:
-        st.info("📚 No se encontraron documentos en la carpeta 'docs'. Puedes agregar documentos PDF, DOCX, TXT o MD.")
-        return
-    
-    docs = []
-    loaded_count = 0
-    
-    for file_path in docs_to_load:
-        file_name = os.path.basename(file_path)
+    try:
+        if not os.path.exists(docs_folder):
+            os.makedirs(docs_folder, exist_ok=True)
+            st.info(f"📁 Carpeta '{docs_folder}' creada. Coloca aquí tus documentos médicos de referencia.")
+            return
         
-        if file_name not in st.session_state.rag_sources:
-            try:
-                if file_path.endswith('.pdf'):
-                    loader = PyMuPDFLoader(file_path)
-                elif file_path.endswith('.docx'):
-                    loader = Docx2txtLoader(file_path)
-                elif file_path.endswith(('.txt', '.md')):
-                    loader = TextLoader(file_path, encoding='utf-8')
-                else:
-                    continue
-                
-                file_docs = loader.load()
-                docs.extend(file_docs)
-                st.session_state.rag_sources.append(file_name)
-                loaded_count += 1
-                
-            except Exception as e:
-                st.error(f"❌ Error cargando {file_name}: {str(e)}")
-    
-    if docs:
-        _split_and_load_docs(docs)
-        if loaded_count > 0:
-            st.success(f"✅ Base de conocimientos cargada: {loaded_count} documentos procesados exitosamente")
+        supported_extensions = ['*.pdf', '*.docx', '*.txt', '*.md']
+        docs_to_load = []
+        
+        for extension in supported_extensions:
+            docs_to_load.extend(glob.glob(os.path.join(docs_folder, extension)))
+        
+        if not docs_to_load:
+            st.info("📚 No se encontraron documentos en la carpeta 'docs'. Puedes agregar documentos PDF, DOCX, TXT o MD.")
+            return
+        
+        docs = []
+        loaded_count = 0
+        error_count = 0
+        
+        for file_path in docs_to_load:
+            file_name = os.path.basename(file_path)
+            
+            if file_name not in st.session_state.rag_sources:
+                try:
+                    if file_path.endswith('.pdf'):
+                        loader = PyMuPDFLoader(file_path)
+                    elif file_path.endswith('.docx'):
+                        loader = Docx2txtLoader(file_path)
+                    elif file_path.endswith(('.txt', '.md')):
+                        loader = TextLoader(file_path, encoding='utf-8')
+                    else:
+                        continue
+                    
+                    file_docs = loader.load()
+                    
+                    if not file_docs:
+                        st.warning(f"⚠️ El archivo {file_name} está vacío o no se pudo leer")
+                        continue
+                        
+                    docs.extend(file_docs)
+                    st.session_state.rag_sources.append(file_name)
+                    loaded_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    st.error(f"❌ Error cargando {file_name}: {str(e)}")
+        
+        if docs:
+            success = _split_and_load_docs(docs)
+            if success and loaded_count > 0:
+                st.success(f"✅ Base de conocimientos cargada: {loaded_count} documentos procesados exitosamente")
+                if error_count > 0:
+                    st.warning(f"⚠️ {error_count} documentos no se pudieron cargar")
+            else:
+                st.error("❌ Error procesando los documentos cargados")
+        else:
+            st.warning("⚠️ No se pudo cargar ningún documento válido")
+            
+    except Exception as e:
+        st.error(f"❌ Error general cargando documentos por defecto: {str(e)}")
+        st.info("ℹ️ La aplicación funcionará sin documentos de referencia")
 
 
 def load_doc_to_db():
@@ -197,16 +209,13 @@ def load_doc_to_db():
         for doc_file in st.session_state.rag_docs:
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) < DB_DOCS_LIMIT:
-                    # Crear directorio temporal si no existe
                     os.makedirs("temp_uploads", exist_ok=True)
                     file_path = f"./temp_uploads/{doc_file.name}"
                     
                     try:
-                        # Guardar archivo temporalmente
                         with open(file_path, "wb") as file:
                             file.write(doc_file.read())
 
-                        # Cargar según el tipo de archivo
                         if doc_file.type == "application/pdf":
                             loader = PyMuPDFLoader(file_path)
                         elif doc_file.name.endswith(".docx"):
@@ -226,7 +235,6 @@ def load_doc_to_db():
                         st.error(f"❌ Error procesando {doc_file.name}: {str(e)}")
                     
                     finally:
-                        # Limpiar archivo temporal
                         if os.path.exists(file_path):
                             os.remove(file_path)
                 else:
@@ -234,13 +242,18 @@ def load_doc_to_db():
                     break
 
         if docs and loaded_count > 0:
-            _split_and_load_docs(docs)
-            st.success(f"✅ {loaded_count} documento(s) adicional(es) procesados exitosamente")
+            success = _split_and_load_docs(docs)
+            if success:
+                st.success(f"✅ {loaded_count} documento(s) adicional(es) procesados exitosamente")
 
 
 def initialize_vector_db(docs):
     """Inicializa la base de datos vectorial"""
     try:
+        if not docs:
+            st.warning("⚠️ No hay documentos para procesar")
+            return None
+            
         if "AZ_OPENAI_API_KEY" in os.environ:
             embedding = AzureOpenAIEmbeddings(
                 api_key=os.getenv("AZ_OPENAI_API_KEY"), 
@@ -249,11 +262,18 @@ def initialize_vector_db(docs):
                 openai_api_version="2024-02-15-preview",
             )
         else:
-            # Usar la API key de OpenAI del estado de la sesión o variable de entorno
-            api_key = st.session_state.get('openai_api_key') or os.getenv("OPENAI_API_KEY")
+            api_key = (
+                st.session_state.get('openai_api_key') or 
+                os.getenv("OPENAI_API_KEY")
+            )
+            
+            if not api_key or not api_key.startswith('sk-'):
+                st.error("❌ API Key de OpenAI no válida o no encontrada")
+                return None
+                
             embedding = OpenAIEmbeddings(
                 api_key=api_key,
-                model="text-embedding-3-small"  # Modelo más económico
+                model="text-embedding-3-small"
             )
 
         vector_db = Chroma.from_documents(
@@ -262,52 +282,78 @@ def initialize_vector_db(docs):
             collection_name=f"urologia_{str(time()).replace('.', '')[:14]}_{st.session_state['session_id'][:8]}",
         )
 
-        # Gestión de colecciones (máximo 30 para evitar problemas de memoria)
+        if vector_db is None:
+            raise Exception("La base vectorial no se inicializó correctamente")
+
+        test_retriever = vector_db.as_retriever()
+        if test_retriever is None:
+            raise Exception("No se pudo crear el retriever")
+
         try:
             chroma_client = vector_db._client
             collection_names = sorted([collection.name for collection in chroma_client.list_collections()])
             while len(collection_names) > 30:
                 chroma_client.delete_collection(collection_names[0])
                 collection_names.pop(0)
-        except Exception as e:
-            st.warning(f"⚠️ Advertencia en gestión de colecciones: {str(e)}")
+        except Exception as cleanup_error:
+            st.warning(f"⚠️ Advertencia en gestión de colecciones: {str(cleanup_error)}")
 
         return vector_db
     
     except Exception as e:
         st.error(f"❌ Error inicializando base de datos vectorial: {str(e)}")
+        st.info("ℹ️ La aplicación funcionará sin la base de documentos, usando conocimiento general")
         return None
 
 
 def _split_and_load_docs(docs):
     """Divide los documentos en chunks y los carga en la base vectorial"""
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=4000,      # Chunks más pequeños para mejor precisión
-        chunk_overlap=800,    # Mayor overlap para mejor contexto
-        separators=["\n\n", "\n", ". ", ".", " ", ""],
-        length_function=len,
-    )
+    try:
+        if not docs:
+            st.warning("⚠️ No hay documentos para procesar")
+            return False
+            
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=4000,
+            chunk_overlap=800,
+            separators=["\n\n", "\n", ". ", ".", " ", ""],
+            length_function=len,
+        )
 
-    document_chunks = text_splitter.split_documents(docs)
+        document_chunks = text_splitter.split_documents(docs)
+        
+        if not document_chunks:
+            st.warning("⚠️ No se pudieron crear chunks de los documentos")
+            return False
 
-    if "vector_db" not in st.session_state:
-        st.session_state.vector_db = initialize_vector_db(document_chunks)
-    else:
-        try:
-            st.session_state.vector_db.add_documents(document_chunks)
-        except Exception as e:
-            st.error(f"❌ Error agregando documentos a la base vectorial: {str(e)}")
+        if "vector_db" not in st.session_state or st.session_state.vector_db is None:
+            st.session_state.vector_db = initialize_vector_db(document_chunks)
+            if st.session_state.vector_db is None:
+                return False
+        else:
+            try:
+                st.session_state.vector_db.add_documents(document_chunks)
+            except Exception as e:
+                st.error(f"❌ Error agregando documentos a la base vectorial: {str(e)}")
+                st.info("🔄 Intentando reinicializar la base de datos...")
+                st.session_state.vector_db = initialize_vector_db(document_chunks)
+                if st.session_state.vector_db is None:
+                    return False
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ Error procesando documentos: {str(e)}")
+        return False
 
-
-# --- FUNCIONES RAG (Retrieval Augmented Generation) ---
 
 def _get_context_retriever_chain(vector_db, llm):
     """Crea la cadena de recuperación de contexto"""
     retriever = vector_db.as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={
-            "k": 8,              # Número de documentos a recuperar
-            "score_threshold": 0.25  # Umbral de similitud
+            "k": 8,
+            "score_threshold": 0.25
         }
     )
     
@@ -337,7 +383,6 @@ def get_conversational_rag_chain(vector_db, llm):
     """Crea la cadena RAG conversacional"""
     retriever_chain = _get_context_retriever_chain(vector_db, llm)
 
-    # Prompt system altamente especializado para RAG
     system_prompt = """
     Eres UrologIA, un asistente de inteligencia artificial altamente especializado en urología y cáncer de próstata. Tienes acceso a una base de conocimientos médicos especializada y debes usar esta información para proporcionar respuestas precisas y actualizadas.
 
@@ -464,27 +509,29 @@ def get_conversational_rag_chain(vector_db, llm):
 
 def stream_llm_rag_response(llm_stream, messages):
     """Stream respuestas RAG del LLM usando documentos médicos"""
-    if "vector_db" not in st.session_state:
-        # Si no hay base vectorial, usar respuesta estándar
+    
+    if "vector_db" not in st.session_state or st.session_state.vector_db is None:
+        st.warning("📚 Base de documentos no disponible, usando conocimiento general de urología...")
         return stream_llm_response(llm_stream, messages)
     
     try:
+        test_retriever = st.session_state.vector_db.as_retriever()
+        if test_retriever is None:
+            raise Exception("Retriever no disponible")
+            
         conversation_rag_chain = get_conversational_rag_chain(st.session_state.vector_db, llm_stream)
         
         response_message = ""
         
-        # Preparar mensajes para el chain
         formatted_messages = []
-        for msg in messages[:-1]:  # Todos excepto el último
+        for msg in messages[:-1]:
             if hasattr(msg, 'type'):
                 formatted_messages.append({"role": msg.type, "content": msg.content})
             else:
                 formatted_messages.append(msg)
         
-        # El último mensaje es el input del usuario
         user_input = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
         
-        # Stream de la respuesta RAG
         for chunk in conversation_rag_chain.pick("answer").stream({
             "messages": formatted_messages, 
             "input": user_input
@@ -492,23 +539,19 @@ def stream_llm_rag_response(llm_stream, messages):
             response_message += chunk
             yield chunk
 
-        # Agregar prefijo para indicar que es respuesta RAG
         full_response = f"📚 *Respuesta basada en documentos médicos*\n\n{response_message}"
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         
     except Exception as e:
         st.error(f"❌ Error en respuesta RAG: {str(e)}")
-        # Fallback a respuesta estándar
+        st.info("🔄 Cambiando a modo de conocimiento general...")
         return stream_llm_response(llm_stream, messages)
 
-
-# --- FUNCIONES DE UTILIDAD ADICIONALES ---
 
 def clear_vector_db():
     """Limpia la base de datos vectorial"""
     if "vector_db" in st.session_state:
         try:
-            # Intentar eliminar la colección actual
             collection_name = st.session_state.vector_db._collection.name
             st.session_state.vector_db._client.delete_collection(collection_name)
             del st.session_state.vector_db
@@ -520,7 +563,7 @@ def clear_vector_db():
 
 def get_rag_stats():
     """Obtiene estadísticas de la base RAG"""
-    if "vector_db" in st.session_state:
+    if "vector_db" in st.session_state and st.session_state.vector_db is not None:
         try:
             collection = st.session_state.vector_db._collection
             count = collection.count()
@@ -546,20 +589,13 @@ def get_rag_stats():
 def validate_medical_query(query):
     """Valida si la consulta es relacionada con urología"""
     urology_keywords = [
-        # Cáncer de próstata
         'prostata', 'próstata', 'psa', 'gleason', 'prostatectomia', 'prostatectomía',
         'radioterapia', 'braquiterapia', 'hormonal', 'antiandrógeno', 'antiandrogeno',
-        
-        # Urología general
         'urolog', 'urin', 'riñon', 'riñón', 'vejiga', 'uretra', 'uréter',
         'litiasis', 'cálculo', 'calculo', 'piedra', 'infección', 'infeccion',
         'cistitis', 'pielonefritis', 'prostatitis',
-        
-        # Síntomas urológicos
         'incontinencia', 'disfuncion', 'disfunción', 'erectil', 'eréctil',
         'orina', 'micción', 'miccion', 'sangre', 'hematuria',
-        
-        # Anatomía urológica
         'testiculo', 'testículo', 'escroto', 'pene', 'uretra',
         'androlog', 'fertilidad', 'esperma'
     ]
@@ -568,7 +604,6 @@ def validate_medical_query(query):
     return any(keyword in query_lower for keyword in urology_keywords)
 
 
-# Función de limpieza al finalizar la sesión
 def cleanup_temp_files():
     """Limpia archivos temporales"""
     temp_dirs = ["temp_uploads", "source_files"]
