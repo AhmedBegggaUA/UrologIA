@@ -9,3 +9,5 @@ openai==1.108.0
 pypdf==6.0.0
 pypdfium2==4.30.0
 streamlit==1.49.1
+sqlite3
+pymupdf
