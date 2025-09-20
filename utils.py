@@ -9,6 +9,7 @@ from langchain_community.document_loaders import (
     WebBaseLoader, 
     PyPDFLoader, 
     Docx2txtLoader,
+    PyMuPDFLoader,
 )
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -165,7 +166,7 @@ def load_default_docs():
         if file_name not in st.session_state.rag_sources:
             try:
                 if file_path.endswith('.pdf'):
-                    loader = PyPDFLoader(file_path)
+                    loader = PyMuPDFLoader(file_path)
                 elif file_path.endswith('.docx'):
                     loader = Docx2txtLoader(file_path)
                 elif file_path.endswith(('.txt', '.md')):
@@ -207,7 +208,7 @@ def load_doc_to_db():
 
                         # Cargar según el tipo de archivo
                         if doc_file.type == "application/pdf":
-                            loader = PyPDFLoader(file_path)
+                            loader = PyMuPDFLoader(file_path)
                         elif doc_file.name.endswith(".docx"):
                             loader = Docx2txtLoader(file_path)
                         elif doc_file.type in ["text/plain", "text/markdown"]:
@@ -306,7 +307,7 @@ def _get_context_retriever_chain(vector_db, llm):
         search_type="similarity_score_threshold",
         search_kwargs={
             "k": 8,              # Número de documentos a recuperar
-            "score_threshold": 0.4  # Umbral de similitud
+            "score_threshold": 0.25  # Umbral de similitud
         }
     )
     

@@ -252,7 +252,7 @@ else:
         selected_model = st.selectbox(
             "Selecciona el modelo de OpenAI",
             MODELS,
-            index=0,
+            index=5,
             help="GPT-4o es el modelo más avanzado y recomendado para consultas médicas complejas"
         )
         
