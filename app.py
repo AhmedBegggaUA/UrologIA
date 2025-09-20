@@ -11,7 +11,6 @@ from utils import stream_llm_response, load_doc_to_db, load_default_docs, stream
 
 dotenv.load_dotenv()
 
-
 MODELS = [
     "gpt-5",
     "gpt-5-mini",
@@ -24,6 +23,7 @@ MODELS = [
     "gpt-4-turbo",
     "gpt-3.5-turbo",
 ]
+
 st.set_page_config(
     page_title="UrologIA - Asistente Especializado",
     page_icon="🏥",
@@ -175,19 +175,6 @@ if not st.session_state.docs_loaded:
         load_default_docs()
         st.session_state.docs_loaded = True
 
-# FORZAR carga de documentos si no hay vector_db pero sí hay archivos en docs
-if "vector_db" not in st.session_state or st.session_state.vector_db is None:
-    docs_folder = "docs"
-    if os.path.exists(docs_folder):
-        docs_in_folder = []
-        for ext in ['*.pdf', '*.docx', '*.txt', '*.md']:
-            docs_in_folder.extend(glob.glob(os.path.join(docs_folder, ext)))
-        
-        if docs_in_folder and not st.session_state.get("force_reload_attempted", False):
-            st.info("🔄 Detectados documentos sin procesar, reintentando carga...")
-            load_default_docs()
-            st.session_state.force_reload_attempted = True
-
 # --- Sidebar ---
 with st.sidebar:
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
@@ -201,25 +188,12 @@ with st.sidebar:
             type="password",
             value=default_openai_api_key,
             help="Puedes obtener tu API key en https://platform.openai.com/account/api-keys",
-            key="openai_api_key_input"
         )
-        # Guardar en session_state para que esté disponible en utils.py
-        if openai_api_key:
-            st.session_state.openai_api_key = openai_api_key
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Información sobre documentos cargados
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 📚 Base de Conocimientos")
-    
-    # Estado del sistema RAG
-    if "vector_db" in st.session_state and st.session_state.vector_db is not None:
-        st.success("🎯 Sistema RAG Activo")
-        rag_stats = get_rag_stats()
-        st.info(f"📊 {rag_stats['chunks_procesados']} chunks procesados")
-    else:
-        st.warning("⚠️ Sistema RAG no disponible")
-        st.info("💡 Verifica que tengas documentos en /docs y API Key válida")
     
     if st.session_state.rag_sources:
         st.markdown("**Documentos cargados:**")
@@ -233,14 +207,6 @@ with st.sidebar:
             st.markdown(f"... y {len(st.session_state.rag_sources) - 5} documentos más")
     else:
         st.info("No hay documentos adicionales cargados")
-    
-    # Botón para recargar documentos
-    if st.button("🔄 Recargar Base de Datos", type="secondary"):
-        if "vector_db" in st.session_state:
-            del st.session_state.vector_db
-        st.session_state.rag_sources.clear()
-        st.session_state.docs_loaded = False
-        st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -287,7 +253,7 @@ else:
             "Selecciona el modelo de OpenAI",
             MODELS,
             index=5,
-            help="GPT-5 es el modelo más avanzado y recomendado para consultas médicas complejas"
+            help="GPT-4o es el modelo más avanzado y recomendado para consultas médicas complejas"
         )
         
         temperature = st.slider(
