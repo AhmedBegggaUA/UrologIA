@@ -240,8 +240,16 @@ def load_doc_to_db():
 
 def initialize_vector_db(docs):
     """Inicializa la base de datos vectorial"""
+    
+    # Validar documentos
+    if not docs or len(docs) == 0:
+        st.error("❌ No hay documentos para procesar")
+        return None
+    
     try:
+        # Verificar configuración de embeddings
         if "AZ_OPENAI_API_KEY" in os.environ:
+            st.info("🔧 Usando Azure OpenAI para embeddings")
             embedding = AzureOpenAIEmbeddings(
                 api_key=os.getenv("AZ_OPENAI_API_KEY"), 
                 azure_endpoint=os.getenv("AZ_OPENAI_ENDPOINT"),
@@ -251,24 +259,43 @@ def initialize_vector_db(docs):
         else:
             # Usar la API key de OpenAI del estado de la sesión o variable de entorno
             api_key = st.session_state.get('openai_api_key') or os.getenv("OPENAI_API_KEY")
+            
+            if not api_key:
+                st.error("❌ No se encontró API key de OpenAI. Configura OPENAI_API_KEY o ingrésala en la interfaz.")
+                return None
+                
+            st.info("🔧 Usando OpenAI para embeddings")
             embedding = OpenAIEmbeddings(
                 api_key=api_key,
-                model="text-embedding-3-small"  # Modelo más económico
+                model="text-embedding-3-small"
             )
 
-        vector_db = Chroma.from_documents(
-            documents=docs,
-            embedding=embedding,
-            collection_name=f"urologia_{str(time()).replace('.', '')[:14]}_{st.session_state['session_id'][:8]}",
-        )
+        # Crear progreso para el usuario
+        with st.spinner("🔄 Creando base de datos vectorial..."):
+            vector_db = Chroma.from_documents(
+                documents=docs,
+                embedding=embedding,
+                collection_name=f"urologia_{str(time()).replace('.', '')[:14]}_{st.session_state['session_id'][:8]}",
+            )
+
+        # Verificar que se creó correctamente
+        if vector_db is None:
+            st.error("❌ Error: La base de datos vectorial se creó como None")
+            return None
+
+        st.success(f"✅ Base de datos vectorial creada con {len(docs)} documentos")
 
         # Gestión de colecciones (máximo 30 para evitar problemas de memoria)
         try:
             chroma_client = vector_db._client
             collection_names = sorted([collection.name for collection in chroma_client.list_collections()])
-            while len(collection_names) > 30:
-                chroma_client.delete_collection(collection_names[0])
-                collection_names.pop(0)
+            
+            if len(collection_names) > 30:
+                st.info(f"🧹 Limpiando colecciones antiguas ({len(collection_names)} > 30)")
+                while len(collection_names) > 30:
+                    chroma_client.delete_collection(collection_names[0])
+                    collection_names.pop(0)
+                    
         except Exception as e:
             st.warning(f"⚠️ Advertencia en gestión de colecciones: {str(e)}")
 
@@ -276,6 +303,16 @@ def initialize_vector_db(docs):
     
     except Exception as e:
         st.error(f"❌ Error inicializando base de datos vectorial: {str(e)}")
+        st.error(f"Tipo de error: {type(e).__name__}")
+        
+        # Información adicional para debugging
+        if "api_key" in str(e).lower():
+            st.error("🔑 Problema con API key. Verifica tu configuración.")
+        elif "embedding" in str(e).lower():
+            st.error("📊 Problema con el modelo de embeddings.")
+        elif "chroma" in str(e).lower():
+            st.error("💾 Problema con la base de datos Chroma.")
+            
         return None
 
 
