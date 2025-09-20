@@ -159,39 +159,56 @@ def load_default_docs():
         for file_path in docs_to_load:
             file_name = os.path.basename(file_path)
             
-            if file_name not in st.session_state.rag_sources:
-                try:
-                    if file_path.endswith('.pdf'):
-                        loader = PyMuPDFLoader(file_path)
-                    elif file_path.endswith('.docx'):
-                        loader = Docx2txtLoader(file_path)
-                    elif file_path.endswith(('.txt', '.md')):
-                        loader = TextLoader(file_path, encoding='utf-8')
-                    else:
-                        continue
+            # SIEMPRE intentar cargar documentos, incluso si ya están en la lista
+            # para asegurar que se procesen correctamente
+            try:
+                if file_path.endswith('.pdf'):
+                    loader = PyMuPDFLoader(file_path)
+                elif file_path.endswith('.docx'):
+                    loader = Docx2txtLoader(file_path)
+                elif file_path.endswith(('.txt', '.md')):
+                    loader = TextLoader(file_path, encoding='utf-8')
+                else:
+                    continue
+                
+                file_docs = loader.load()
+                
+                if not file_docs:
+                    st.warning(f"⚠️ El archivo {file_name} está vacío o no se pudo leer")
+                    continue
                     
-                    file_docs = loader.load()
-                    
-                    if not file_docs:
-                        st.warning(f"⚠️ El archivo {file_name} está vacío o no se pudo leer")
-                        continue
-                        
-                    docs.extend(file_docs)
+                docs.extend(file_docs)
+                
+                # Solo agregar a la lista si no está ya
+                if file_name not in st.session_state.rag_sources:
                     st.session_state.rag_sources.append(file_name)
-                    loaded_count += 1
                     
-                except Exception as e:
-                    error_count += 1
-                    st.error(f"❌ Error cargando {file_name}: {str(e)}")
+                loaded_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                st.error(f"❌ Error cargando {file_name}: {str(e)}")
         
+        # SIEMPRE intentar procesar documentos si hay alguno
         if docs:
             success = _split_and_load_docs(docs)
-            if success and loaded_count > 0:
+            if success:
                 st.success(f"✅ Base de conocimientos cargada: {loaded_count} documentos procesados exitosamente")
                 if error_count > 0:
                     st.warning(f"⚠️ {error_count} documentos no se pudieron cargar")
+                
+                # Verificar que realmente se creó la base vectorial
+                if "vector_db" in st.session_state and st.session_state.vector_db is not None:
+                    st.info("🎯 Sistema RAG activo y listo para consultas")
+                else:
+                    st.error("❌ Error: Base vectorial no se inicializó correctamente")
             else:
                 st.error("❌ Error procesando los documentos cargados")
+                # Intentar una segunda vez
+                st.info("🔄 Reintentando procesamiento de documentos...")
+                success_retry = _split_and_load_docs(docs)
+                if success_retry:
+                    st.success("✅ Documentos procesados exitosamente en segundo intento")
         else:
             st.warning("⚠️ No se pudo cargar ningún documento válido")
             
@@ -253,6 +270,9 @@ def initialize_vector_db(docs):
         if not docs:
             st.warning("⚠️ No hay documentos para procesar")
             return None
+        
+        # Mostrar información de debug
+        st.info(f"🔧 Inicializando base vectorial con {len(docs)} documentos")
             
         if "AZ_OPENAI_API_KEY" in os.environ:
             embedding = AzureOpenAIEmbeddings(
@@ -269,17 +289,23 @@ def initialize_vector_db(docs):
             
             if not api_key or not api_key.startswith('sk-'):
                 st.error("❌ API Key de OpenAI no válida o no encontrada")
+                st.error("💡 Asegúrate de introducir tu API Key en la barra lateral")
                 return None
                 
             embedding = OpenAIEmbeddings(
                 api_key=api_key,
                 model="text-embedding-3-small"
             )
+            st.info(f"🔑 Usando API Key: {api_key[:12]}...")
+
+        # Crear el nombre de la colección
+        collection_name = f"urologia_{str(time()).replace('.', '')[:14]}_{st.session_state['session_id'][:8]}"
+        st.info(f"📦 Creando colección: {collection_name}")
 
         vector_db = Chroma.from_documents(
             documents=docs,
             embedding=embedding,
-            collection_name=f"urologia_{str(time()).replace('.', '')[:14]}_{st.session_state['session_id'][:8]}",
+            collection_name=collection_name,
         )
 
         if vector_db is None:
@@ -289,9 +315,12 @@ def initialize_vector_db(docs):
         if test_retriever is None:
             raise Exception("No se pudo crear el retriever")
 
+        st.success(f"✅ Base vectorial creada exitosamente con {len(docs)} documentos")
+
         try:
             chroma_client = vector_db._client
             collection_names = sorted([collection.name for collection in chroma_client.list_collections()])
+            st.info(f"📊 Total de colecciones en memoria: {len(collection_names)}")
             while len(collection_names) > 30:
                 chroma_client.delete_collection(collection_names[0])
                 collection_names.pop(0)
@@ -303,6 +332,12 @@ def initialize_vector_db(docs):
     except Exception as e:
         st.error(f"❌ Error inicializando base de datos vectorial: {str(e)}")
         st.info("ℹ️ La aplicación funcionará sin la base de documentos, usando conocimiento general")
+        
+        # Información adicional de debug
+        if "api_key" in locals():
+            st.error(f"🔍 Debug - API Key disponible: {'Sí' if api_key else 'No'}")
+        st.error(f"🔍 Debug - Número de documentos: {len(docs) if docs else 0}")
+        
         return None
 
 

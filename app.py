@@ -24,7 +24,6 @@ MODELS = [
     "gpt-4-turbo",
     "gpt-3.5-turbo",
 ]
-
 st.set_page_config(
     page_title="UrologIA - Asistente Especializado",
     page_icon="🏥",
@@ -176,6 +175,19 @@ if not st.session_state.docs_loaded:
         load_default_docs()
         st.session_state.docs_loaded = True
 
+# FORZAR carga de documentos si no hay vector_db pero sí hay archivos en docs
+if "vector_db" not in st.session_state or st.session_state.vector_db is None:
+    docs_folder = "docs"
+    if os.path.exists(docs_folder):
+        docs_in_folder = []
+        for ext in ['*.pdf', '*.docx', '*.txt', '*.md']:
+            docs_in_folder.extend(glob.glob(os.path.join(docs_folder, ext)))
+        
+        if docs_in_folder and not st.session_state.get("force_reload_attempted", False):
+            st.info("🔄 Detectados documentos sin procesar, reintentando carga...")
+            load_default_docs()
+            st.session_state.force_reload_attempted = True
+
 # --- Sidebar ---
 with st.sidebar:
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
@@ -200,6 +212,15 @@ with st.sidebar:
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 📚 Base de Conocimientos")
     
+    # Estado del sistema RAG
+    if "vector_db" in st.session_state and st.session_state.vector_db is not None:
+        st.success("🎯 Sistema RAG Activo")
+        rag_stats = get_rag_stats()
+        st.info(f"📊 {rag_stats['chunks_procesados']} chunks procesados")
+    else:
+        st.warning("⚠️ Sistema RAG no disponible")
+        st.info("💡 Verifica que tengas documentos en /docs y API Key válida")
+    
     if st.session_state.rag_sources:
         st.markdown("**Documentos cargados:**")
         for i, source in enumerate(st.session_state.rag_sources[:5]):  # Mostrar solo los primeros 5
@@ -212,6 +233,14 @@ with st.sidebar:
             st.markdown(f"... y {len(st.session_state.rag_sources) - 5} documentos más")
     else:
         st.info("No hay documentos adicionales cargados")
+    
+    # Botón para recargar documentos
+    if st.button("🔄 Recargar Base de Datos", type="secondary"):
+        if "vector_db" in st.session_state:
+            del st.session_state.vector_db
+        st.session_state.rag_sources.clear()
+        st.session_state.docs_loaded = False
+        st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
